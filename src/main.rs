@@ -1,5 +1,6 @@
 use std::cmp::PartialEq;
-use std::fmt;
+use std::{fmt, time};
+use std::thread::sleep;
 use union_find::UnionFind;
 
 #[derive(Clone)]
@@ -22,7 +23,7 @@ impl fmt::Display for Board {
                     Cell::Space(Some(one), _) => {
                         write!(f, "{}?", dir_to_char(one.clone()))?
                     }
-                    Cell::Space(_, _) => write!(f, "・")?,
+                    Cell::Space(_, _) => write!(f, "..")?,
                     Cell::Unknown => write!(f, "??")?,
                 }
             }
@@ -91,11 +92,14 @@ enum CellEnum {
 type Cell = CellEnum;
 
 fn main() {
-    // let problem = "10/10/202022l40i4141h40f122242l31i2131h30b42c101210c41i";
-    // let problem = "5/5/g22q";
     // let problem = "2/2/d";
     // let problem = "3/3/40";
-    let problem = "2/3/41";
+    // let problem = "2/3/41";
+    // let problem = "2/5/j";
+    // let problem = "5/5/g22q";
+    let problem = "10/10/202022l40i4141h40f122242l31i2131h30b42c101210c41i";
+    // let problem = "10/10/23l24zg21c42n13b11l42m14c";
+
     let board = create_board(problem);
     println!("{}", board);
     println!("{:?}", check(board.clone()));
@@ -283,6 +287,7 @@ fn check(board: Board) -> CheckResultEnum {
                             let mut now = (i as i32, j as i32);
                             let mut wall_count: i64 = 0;
                             let mut unknown_count: i64 = 0;
+                            let mut prev_wall_flag = false;
                             // breakされるまで
                             loop {
                                 now.0 += vec.0;
@@ -292,12 +297,18 @@ fn check(board: Board) -> CheckResultEnum {
                                 }
                                 if board.0[now.0 as usize][now.1 as usize] == Cell::Wall(WallEnum::Wall) {
                                     wall_count += 1;
+                                    prev_wall_flag = true;
+                                    continue;
+                                } else if board.0[now.0 as usize][now.1 as usize] == Cell::Unknown {
+                                    if !prev_wall_flag {
+                                        unknown_count += 1;
+                                        prev_wall_flag = true
+                                    } else {
+                                        prev_wall_flag = false;
+                                    }
                                     continue;
                                 }
-                                if board.0[now.0 as usize][now.1 as usize] == Cell::Unknown {
-                                    unknown_count += 1;
-                                    continue;
-                                }
+                                prev_wall_flag = false;
                             }
                             // 壁の数がすでにnumを超えていたら矛盾
                             if wall_count.clone() > *num {
@@ -378,6 +389,8 @@ fn solve(board: Board) -> (CheckResultEnum, Option<Board>) {
         CheckResultEnum::Complete => return (result, Some(board)),
         _ => {}
     }
+    // println!("{}", board);
+    // sleep(time::Duration::from_millis(100));
     for (i_x, row) in board.0.iter().enumerate() {
         let i = i_x as i32;
         for (j_x, cell) in row.iter().enumerate() {
@@ -410,6 +423,21 @@ fn solve(board: Board) -> (CheckResultEnum, Option<Board>) {
                                     _ => continue
                                 }
                             }
+                            CellEnum::Wall(_) => {
+                                // 上下左右は必ずSpace
+                                if i + 1 < board.0.len() as i32 && board.0[(i + 1) as usize][j as usize] == Cell::Unknown {
+                                    new_board.0[(i + 1) as usize][j as usize] = Cell::Space(None, None);
+                                }
+                                if i - 1 >= 0 && board.0[(i - 1) as usize][j as usize] == Cell::Unknown {
+                                    new_board.0[(i - 1) as usize][j as usize] = Cell::Space(None, None);
+                                }
+                                if j + 1 < row.len() as i32 && board.0[i as usize][(j + 1) as usize] == Cell::Unknown {
+                                    new_board.0[i as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                }
+                                if j - 1 >= 0 && board.0[i as usize][(j - 1) as usize] == Cell::Unknown {
+                                    new_board.0[i as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                }
+                            }
                             _ => {}
                         }
                         new_board.0[i as usize][j as usize] = c;
@@ -418,6 +446,7 @@ fn solve(board: Board) -> (CheckResultEnum, Option<Board>) {
                             return (result, board);
                         }
                     }
+                    return (CheckResultEnum::Invalid(CheckResultInvalidEnum::NoAnswer), None);
                 }
                 CellEnum::Space(None, _) => {
                     let candidate = vec![
@@ -453,6 +482,7 @@ fn solve(board: Board) -> (CheckResultEnum, Option<Board>) {
                             return (result, board);
                         }
                     }
+                    return (CheckResultEnum::Invalid(CheckResultInvalidEnum::NoAnswer), None);
                 }
                 CellEnum::Space(Some(r), None) => {
                     let candidate = vec![
@@ -491,6 +521,7 @@ fn solve(board: Board) -> (CheckResultEnum, Option<Board>) {
                             return (result, board);
                         }
                     }
+                    return (CheckResultEnum::Invalid(CheckResultInvalidEnum::NoAnswer), None);
                 }
                 _ => continue
             }
