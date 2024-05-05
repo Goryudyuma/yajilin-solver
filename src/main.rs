@@ -2,6 +2,7 @@ use std::cmp::PartialEq;
 use std::fmt;
 use union_find::UnionFind;
 
+#[derive(Clone)]
 pub struct Board(Vec<Vec<Cell>>);
 
 impl fmt::Display for Board {
@@ -11,12 +12,18 @@ impl fmt::Display for Board {
                 match cell {
                     Cell::Wall(wall) => {
                         match wall {
-                            WallEnum::Wall => write!(f, "W")?,
+                            WallEnum::Wall => write!(f, " W")?,
                             WallEnum::Hint(dir, num) => write!(f, "{}{}", dir_to_char(dir.clone()), num)?,
                         }
                     }
+                    Cell::Space(Some(one), Some(twh)) => {
+                        write!(f, "{}{}", dir_to_char(one.clone()), dir_to_char(twh.clone()))?
+                    }
+                    Cell::Space(Some(one), _) => {
+                        write!(f, "{}?", dir_to_char(one.clone()))?
+                    }
                     Cell::Space(_, _) => write!(f, "・")?,
-                    Cell::Unknown => write!(f, "  ")?,
+                    Cell::Unknown => write!(f, "??")?,
                 }
             }
             write!(f, "\n")?;
@@ -57,6 +64,15 @@ impl DirectionEnum {
             DirectionEnum::Right => (0, 1),
         }
     }
+    fn reverse(&self) -> DirectionEnum {
+        match self {
+            DirectionEnum::None => DirectionEnum::None,
+            DirectionEnum::Up => DirectionEnum::Down,
+            DirectionEnum::Down => DirectionEnum::Up,
+            DirectionEnum::Left => DirectionEnum::Right,
+            DirectionEnum::Right => DirectionEnum::Left,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -75,22 +91,34 @@ enum CellEnum {
 type Cell = CellEnum;
 
 fn main() {
-    let problem = "10/10/202022l40i4141h40f122242l31i2131h30b42c101210c41i";
+    // let problem = "10/10/202022l40i4141h40f122242l31i2131h30b42c101210c41i";
+    // let problem = "5/5/g22q";
+    // let problem = "2/2/d";
+    // let problem = "3/3/40";
+    let problem = "2/3/41";
     let board = create_board(problem);
     println!("{}", board);
-    println!("{:?}", check(board))
+    println!("{:?}", check(board.clone()));
+
+    let (result, result_board) = solve(board);
+    println!("{:?}", result);
+    match result_board {
+        Some(b) => println!("{}", b),
+        None => println!("None")
+    }
 }
 
 fn create_board(problem: &str) -> Board {
     // まずは/で分割
     let iter: Vec<&str> = problem.split("/").collect();
 
-    // 高さと幅を取得
-    let height: usize = iter[0].parse().unwrap();
-    let width: usize = iter[1].parse().unwrap();
+    // 幅と高さを取得
+    let width: usize = iter[0].parse().unwrap();
+    let height: usize = iter[1].parse().unwrap();
 
     // iter[2]を一文字ずつ取り出して処理
-    let b = create_board_sub(iter[2].chars());
+    let mut b = create_board_sub(iter[2].chars());
+    b.extend(vec![CellEnum::Unknown; (height * width - b.len()) as usize]);
 
     return Board(b.chunks(width).map(|x| x.to_vec()).collect());
 }
@@ -192,6 +220,7 @@ fn dir_to_char(dir: DirectionEnum) -> char {
 enum CheckResultInvalidEnum {
     AdjacentWall(i32, i32),
     Hint(i32, i32),
+    NoAnswer,
 }
 
 #[derive(Debug)]
@@ -288,6 +317,9 @@ fn check(board: Board) -> CheckResultEnum {
                     if let CheckResultEnum::Invalid(_) = check_direction_and_return_result(two, i, j, &board) {
                         return CheckResultEnum::Invalid(CheckResultInvalidEnum::Hint(i, j));
                     }
+                    if *one == None || *two == None {
+                        complete_flag = false;
+                    }
                 }
                 Cell::Unknown => {
                     complete_flag = false;
@@ -319,6 +351,9 @@ fn check_direction_and_return_result(direction: &Option<DirectionEnum>, i: i32, 
         Some(now) => {
             let vec = now.to_vector();
             let next = (i + vec.0, j + vec.1);
+            if next.0 < 0 || next.0 >= board.0.len() as i32 || next.1 < 0 || next.1 >= board.0[0].len() as i32 {
+                return CheckResultEnum::Invalid(CheckResultInvalidEnum::Hint(i, j));
+            }
             match &board.0[next.0 as usize][next.1 as usize] {
                 Cell::Space(another_one, another_two) => {
                     if check_direction_and_continue(another_one, next, (i, j)) {
@@ -334,4 +369,132 @@ fn check_direction_and_return_result(direction: &Option<DirectionEnum>, i: i32, 
         }
         None => CheckResultEnum::Valid,
     }
+}
+
+fn solve(board: Board) -> (CheckResultEnum, Option<Board>) {
+    let result = check(board.clone());
+    match result {
+        CheckResultEnum::Invalid(_) => return (result, None),
+        CheckResultEnum::Complete => return (result, Some(board)),
+        _ => {}
+    }
+    for (i_x, row) in board.0.iter().enumerate() {
+        let i = i_x as i32;
+        for (j_x, cell) in row.iter().enumerate() {
+            let j = j_x as i32;
+            match cell {
+                CellEnum::Unknown => {
+                    let candidate = vec![
+                        Cell::Wall(WallEnum::Wall),
+                        Cell::Space(Some(DirectionEnum::Up), None),
+                        Cell::Space(Some(DirectionEnum::Down), None),
+                        Cell::Space(Some(DirectionEnum::Left), None),
+                        Cell::Space(Some(DirectionEnum::Right), None),
+                    ];
+                    for c in candidate {
+                        let mut new_board = board.clone();
+                        match c.clone() {
+                            Cell::Space(Some(one), _) => {
+                                let vec = one.to_vector();
+                                let next = (i + vec.0, j + vec.1);
+                                if next.0 < 0 || next.0 >= board.0.len() as i32 || next.1 < 0 || next.1 >= row.len() as i32 {
+                                    continue;
+                                }
+                                match new_board.0[next.0 as usize][next.1 as usize].clone() {
+                                    Cell::Unknown | Cell::Space(None, _) => {
+                                        new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(one.reverse()), None);
+                                    }
+                                    Cell::Space(Some(another), None) => {
+                                        new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(another), Some(one.reverse()));
+                                    }
+                                    _ => continue
+                                }
+                            }
+                            _ => {}
+                        }
+                        new_board.0[i as usize][j as usize] = c;
+                        let (result, board) = solve(new_board);
+                        if let CheckResultEnum::Complete = result {
+                            return (result, board);
+                        }
+                    }
+                }
+                CellEnum::Space(None, _) => {
+                    let candidate = vec![
+                        Cell::Space(Some(DirectionEnum::Up), None),
+                        Cell::Space(Some(DirectionEnum::Down), None),
+                        Cell::Space(Some(DirectionEnum::Left), None),
+                        Cell::Space(Some(DirectionEnum::Right), None),
+                    ];
+                    for c in candidate {
+                        let mut new_board = board.clone();
+                        match c.clone() {
+                            Cell::Space(Some(one), _) => {
+                                let vec = one.to_vector();
+                                let next = (i + vec.0, j + vec.1);
+                                if next.0 < 0 || next.0 >= board.0.len() as i32 || next.1 < 0 || next.1 >= row.len() as i32 {
+                                    continue;
+                                }
+                                match new_board.0[next.0 as usize][next.1 as usize].clone() {
+                                    Cell::Unknown | Cell::Space(None, _) => {
+                                        new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(one.reverse()), None);
+                                    }
+                                    Cell::Space(Some(another), None) => {
+                                        new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(another), Some(one.reverse()));
+                                    }
+                                    _ => continue
+                                }
+                            }
+                            _ => {}
+                        }
+                        new_board.0[i as usize][j as usize] = c;
+                        let (result, board) = solve(new_board);
+                        if let CheckResultEnum::Complete = result {
+                            return (result, board);
+                        }
+                    }
+                }
+                CellEnum::Space(Some(r), None) => {
+                    let candidate = vec![
+                        Cell::Space(Some(r.clone()), Some(DirectionEnum::Up)),
+                        Cell::Space(Some(r.clone()), Some(DirectionEnum::Down)),
+                        Cell::Space(Some(r.clone()), Some(DirectionEnum::Left)),
+                        Cell::Space(Some(r.clone()), Some(DirectionEnum::Right)),
+                    ];
+                    for c in candidate {
+                        let mut new_board = board.clone();
+                        match c.clone() {
+                            Cell::Space(Some(another), Some(one)) => {
+                                if another == one {
+                                    continue; // 同じ方向はダメ
+                                }
+                                let vec = one.to_vector();
+                                let next = (i + vec.0, j + vec.1);
+                                if next.0 < 0 || next.0 >= board.0.len() as i32 || next.1 < 0 || next.1 >= row.len() as i32 {
+                                    continue;
+                                }
+                                match new_board.0[next.0 as usize][next.1 as usize].clone() {
+                                    Cell::Unknown | Cell::Space(None, _) => {
+                                        new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(one.reverse()), None);
+                                    }
+                                    Cell::Space(Some(another), None) => {
+                                        new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(another), Some(one.reverse()));
+                                    }
+                                    _ => continue
+                                }
+                            }
+                            _ => {}
+                        }
+                        new_board.0[i as usize][j as usize] = c;
+                        let (result, board) = solve(new_board);
+                        if let CheckResultEnum::Complete = result {
+                            return (result, board);
+                        }
+                    }
+                }
+                _ => continue
+            }
+        }
+    }
+    return (CheckResultEnum::Invalid(CheckResultInvalidEnum::NoAnswer), None);
 }
