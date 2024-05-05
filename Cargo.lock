@@ -3,5 +3,14 @@
 version = 3
 
 [[package]]
+name = "union-find"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c109a31f4b2557d711f79c65b0e097359c033c78ba6416b78593e78f3dba930f"
+
+[[package]]
 name = "yajilin-solver"
 version = "0.1.0"
+dependencies = [
+ "union-find",
+]
