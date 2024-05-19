@@ -102,9 +102,9 @@ fn main() {
 
     let board = create_board(problem);
     println!("{}", board);
-    println!("{:?}", check(board.clone()));
+    println!("{:?}", check(&board));
 
-    let (result, result_board) = solve(board);
+    let (result, result_board) = solve(&board);
     println!("{:?}", result);
     match result_board {
         Some(b) => println!("{}", b),
@@ -247,7 +247,7 @@ impl PartialEq for CellEnum {
 }
 
 
-fn check(board: Board) -> CheckResultEnum {
+fn check(board: &Board) -> CheckResultEnum {
     let mut complete_flag = true;
     for (i_x, row) in board.0.iter().enumerate() {
         let i = i_x as i32;
@@ -382,11 +382,11 @@ fn check_direction_and_return_result(direction: &Option<DirectionEnum>, i: i32, 
     }
 }
 
-fn solve(board: Board) -> (CheckResultEnum, Option<Board>) {
-    let result = check(board.clone());
+fn solve(board: &Board) -> (CheckResultEnum, Option<Board>) {
+    let result = check(&board);
     match result {
         CheckResultEnum::Invalid(_) => return (result, None),
-        CheckResultEnum::Complete => return (result, Some(board)),
+        CheckResultEnum::Complete => return (result, Some(board.clone())),
         _ => {}
     }
     // println!("{}", board);
@@ -437,11 +437,101 @@ fn solve(board: Board) -> (CheckResultEnum, Option<Board>) {
                                 if j - 1 >= 0 && board.0[i as usize][(j - 1) as usize] == Cell::Unknown {
                                     new_board.0[i as usize][(j - 1) as usize] = Cell::Space(None, None);
                                 }
+
+                                // 壁と壁に挟まれているのであれば、斜めはSpace
+                                // TODO 線を引いても大丈夫
+                                if i + 2 < board.0.len() as i32 {
+                                    match board.0[(i + 2) as usize][j as usize].clone() {
+                                        Cell::Wall(_) => {
+                                            if j + 1 < row.len() as i32 && board.0[(i + 1) as usize][(j + 1) as usize] == Cell::Unknown {
+                                                new_board.0[(i + 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                            }
+                                            if j - 1 >= 0 && board.0[(i + 1) as usize][(j - 1) as usize] == Cell::Unknown {
+                                                new_board.0[(i + 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                if i + 2 == board.0.len() as i32 {
+                                    if j + 1 < row.len() as i32 && board.0[(i + 1) as usize][(j + 1) as usize] == Cell::Unknown {
+                                        new_board.0[(i + 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                    }
+                                    if j - 1 >= 0 && board.0[(i + 1) as usize][(j - 1) as usize] == Cell::Unknown {
+                                        new_board.0[(i + 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                    }
+                                }
+
+                                if i - 2 >= 0 {
+                                    match board.0[(i - 2) as usize][j as usize].clone() {
+                                        Cell::Wall(_) => {
+                                            if j + 1 < row.len() as i32 && board.0[(i - 1) as usize][(j + 1) as usize] == Cell::Unknown {
+                                                new_board.0[(i - 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                            }
+                                            if j - 1 >= 0 && board.0[(i - 1) as usize][(j - 1) as usize] == Cell::Unknown {
+                                                new_board.0[(i - 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                if i - 2 == 0 {
+                                    if j + 1 < row.len() as i32 && board.0[(i - 1) as usize][(j + 1) as usize] == Cell::Unknown {
+                                        new_board.0[(i - 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                    }
+                                    if j - 1 >= 0 && board.0[(i - 1) as usize][(j - 1) as usize] == Cell::Unknown {
+                                        new_board.0[(i - 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                    }
+                                }
+
+                                if j + 2 < row.len() as i32 {
+                                    match board.0[i as usize][(j + 2) as usize].clone() {
+                                        Cell::Wall(_) => {
+                                            if i + 1 < board.0.len() as i32 && board.0[(i + 1) as usize][(j + 1) as usize] == Cell::Unknown {
+                                                new_board.0[(i + 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                            }
+                                            if i - 1 >= 0 && board.0[(i - 1) as usize][(j + 1) as usize] == Cell::Unknown {
+                                                new_board.0[(i - 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                if j + 2 == row.len() as i32 {
+                                    if i + 1 < board.0.len() as i32 && board.0[(i + 1) as usize][(j + 1) as usize] == Cell::Unknown {
+                                        new_board.0[(i + 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                    }
+                                    if i - 1 >= 0 && board.0[(i - 1) as usize][(j + 1) as usize] == Cell::Unknown {
+                                        new_board.0[(i - 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                    }
+                                }
+
+                                if j - 2 >= 0 {
+                                    match board.0[i as usize][(j - 2) as usize].clone() {
+                                        Cell::Wall(_) => {
+                                            if i + 1 < board.0.len() as i32 && board.0[(i + 1) as usize][(j - 1) as usize] == Cell::Unknown {
+                                                new_board.0[(i + 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                            }
+                                            if i - 1 >= 0 && board.0[(i - 1) as usize][(j - 1) as usize] == Cell::Unknown {
+                                                new_board.0[(i - 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                if j - 2 == 0 {
+                                    if i + 1 < board.0.len() as i32 && board.0[(i + 1) as usize][(j - 1) as usize] == Cell::Unknown {
+                                        new_board.0[(i + 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                    }
+                                    if i - 1 >= 0 && board.0[(i - 1) as usize][(j - 1) as usize] == Cell::Unknown {
+                                        new_board.0[(i - 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                    }
+                                }
                             }
                             _ => {}
                         }
                         new_board.0[i as usize][j as usize] = c;
-                        let (result, board) = solve(new_board);
+                        let (result, board) = solve(&new_board);
                         if let CheckResultEnum::Complete = result {
                             return (result, board);
                         }
@@ -477,7 +567,7 @@ fn solve(board: Board) -> (CheckResultEnum, Option<Board>) {
                             _ => {}
                         }
                         new_board.0[i as usize][j as usize] = c;
-                        let (result, board) = solve(new_board);
+                        let (result, board) = solve(&new_board);
                         if let CheckResultEnum::Complete = result {
                             return (result, board);
                         }
@@ -516,7 +606,7 @@ fn solve(board: Board) -> (CheckResultEnum, Option<Board>) {
                             _ => {}
                         }
                         new_board.0[i as usize][j as usize] = c;
-                        let (result, board) = solve(new_board);
+                        let (result, board) = solve(&new_board);
                         if let CheckResultEnum::Complete = result {
                             return (result, board);
                         }
