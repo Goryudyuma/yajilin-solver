@@ -1,6 +1,8 @@
 use std::cmp::PartialEq;
-use std::{fmt};
+use std::{fmt, time};
+use std::thread::sleep;
 use union_find::UnionFind;
+use priority_queue::PriorityQueue;
 
 #[derive(Clone)]
 pub struct Board(Vec<Vec<Cell>>);
@@ -103,7 +105,7 @@ fn main() {
     println!("{}", board);
     println!("{:?}", check(&board));
 
-    let (result, result_board) = solve(&board);
+    let (result, result_board) = solve(&board, &create_priority_queue(&board));
     println!("{:?}", result);
     match result_board {
         Some(b) => println!("{}", b),
@@ -381,242 +383,302 @@ fn check_direction_and_return_result(direction: &Option<DirectionEnum>, i: i32, 
     }
 }
 
-fn solve(board: &Board) -> (CheckResultEnum, Option<Board>) {
+fn solve(board: &Board, pq: &PriorityQueue<(usize, usize), i32>) -> (CheckResultEnum, Option<Board>) {
     let result = check(&board);
     match result {
         CheckResultEnum::Invalid(_) => return (result, None),
         CheckResultEnum::Complete => return (result, Some(board.clone())),
         _ => {}
     }
+
+    let mut next_pq = pq.clone();
+    let next = next_pq.pop();
+    if next.is_none() {
+        return (CheckResultEnum::Invalid(CheckResultInvalidEnum::NoAnswer), None);
+    }
+    if next.unwrap().1 == 0 {
+        return solve(&board, &next_pq);
+    }
+
     // println!("{}", board);
     // sleep(time::Duration::from_millis(100));
-    for (i_x, row) in board.0.iter().enumerate() {
-        let i = i_x as i32;
-        for (j_x, cell) in row.iter().enumerate() {
-            let j = j_x as i32;
-            match cell {
-                CellEnum::Unknown => {
-                    let candidate = vec![
-                        Cell::Wall(WallEnum::Wall),
-                        Cell::Space(Some(DirectionEnum::Up), None),
-                        Cell::Space(Some(DirectionEnum::Down), None),
-                        Cell::Space(Some(DirectionEnum::Left), None),
-                        Cell::Space(Some(DirectionEnum::Right), None),
-                    ];
-                    for c in candidate {
-                        let mut new_board = board.clone();
-                        match c.clone() {
-                            Cell::Space(Some(one), _) => {
-                                let vec = one.to_vector();
-                                let next = (i + vec.0, j + vec.1);
-                                if next.0 < 0 || next.0 >= board.0.len() as i32 || next.1 < 0 || next.1 >= row.len() as i32 {
-                                    continue;
-                                }
-                                match new_board.0[next.0 as usize][next.1 as usize].clone() {
-                                    Cell::Unknown | Cell::Space(None, _) => {
-                                        new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(one.reverse()), None);
-                                    }
-                                    Cell::Space(Some(another), None) => {
-                                        new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(another), Some(one.reverse()));
-                                    }
-                                    _ => continue
-                                }
-                            }
-                            CellEnum::Wall(_) => {
-                                // 上下左右は必ずSpace
-                                if i + 1 < board.0.len() as i32 && board.0[(i + 1) as usize][j as usize] == Cell::Unknown {
-                                    new_board.0[(i + 1) as usize][j as usize] = Cell::Space(None, None);
-                                }
-                                if i - 1 >= 0 && board.0[(i - 1) as usize][j as usize] == Cell::Unknown {
-                                    new_board.0[(i - 1) as usize][j as usize] = Cell::Space(None, None);
-                                }
-                                if j + 1 < row.len() as i32 && board.0[i as usize][(j + 1) as usize] == Cell::Unknown {
-                                    new_board.0[i as usize][(j + 1) as usize] = Cell::Space(None, None);
-                                }
-                                if j - 1 >= 0 && board.0[i as usize][(j - 1) as usize] == Cell::Unknown {
-                                    new_board.0[i as usize][(j - 1) as usize] = Cell::Space(None, None);
-                                }
 
-                                // 壁と壁に挟まれているのであれば、斜めはSpace
-                                // TODO 線を引いても大丈夫
-                                if i + 2 < board.0.len() as i32 {
-                                    match board.0[(i + 2) as usize][j as usize].clone() {
-                                        Cell::Wall(_) => {
-                                            if j + 1 < row.len() as i32 && board.0[(i + 1) as usize][(j + 1) as usize] == Cell::Unknown {
-                                                new_board.0[(i + 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
-                                            }
-                                            if j - 1 >= 0 && board.0[(i + 1) as usize][(j - 1) as usize] == Cell::Unknown {
-                                                new_board.0[(i + 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
-                                            }
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                if i + 2 == board.0.len() as i32 {
-                                    if j + 1 < row.len() as i32 && board.0[(i + 1) as usize][(j + 1) as usize] == Cell::Unknown {
+    let i = next.unwrap().0.0 as i32;
+    let j = next.unwrap().0.1 as i32;
+    let cell = &board.0[i as usize][j as usize];
+    println!("{} {} {}", i, j, next.unwrap().1);
+    return match cell {
+        CellEnum::Unknown => {
+            let candidate = vec![
+                Cell::Wall(WallEnum::Wall),
+                Cell::Space(Some(DirectionEnum::Up), None),
+                Cell::Space(Some(DirectionEnum::Down), None),
+                Cell::Space(Some(DirectionEnum::Left), None),
+                Cell::Space(Some(DirectionEnum::Right), None),
+            ];
+            for c in candidate {
+                let mut new_board = board.clone();
+                let mut update_cell = Vec::new();
+                match c.clone() {
+                    Cell::Space(Some(one), _) => {
+                        let vec = one.to_vector();
+                        let next = (i + vec.0, j + vec.1);
+                        if next.0 < 0 || next.0 >= board.0.len() as i32 || next.1 < 0 || next.1 >= board.0[0].len() as i32 {
+                            continue;
+                        }
+                        match new_board.0[next.0 as usize][next.1 as usize].clone() {
+                            Cell::Unknown | Cell::Space(None, _) => {
+                                new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(one.reverse()), None);
+                                update_cell.push((next.0, next.1));
+                            }
+                            Cell::Space(Some(another), None) => {
+                                new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(another), Some(one.reverse()));
+                                update_cell.push((next.0, next.1));
+                            }
+                            _ => continue
+                        }
+                    }
+                    CellEnum::Wall(_) => {
+                        update_cell.push((i, j));
+                        // 上下左右は必ずSpace
+                        if i + 1 < board.0.len() as i32 && board.0[(i + 1) as usize][j as usize] == Cell::Unknown {
+                            new_board.0[(i + 1) as usize][j as usize] = Cell::Space(None, None);
+                            update_cell.push((i + 1, j));
+                        }
+                        if i - 1 >= 0 && board.0[(i - 1) as usize][j as usize] == Cell::Unknown {
+                            new_board.0[(i - 1) as usize][j as usize] = Cell::Space(None, None);
+                            update_cell.push((i - 1, j));
+                        }
+                        if j + 1 < board.0[0].len() as i32 && board.0[i as usize][(j + 1) as usize] == Cell::Unknown {
+                            new_board.0[i as usize][(j + 1) as usize] = Cell::Space(None, None);
+                            update_cell.push((i, j + 1));
+                        }
+                        if j - 1 >= 0 && board.0[i as usize][(j - 1) as usize] == Cell::Unknown {
+                            new_board.0[i as usize][(j - 1) as usize] = Cell::Space(None, None);
+                            update_cell.push((i, j - 1));
+                        }
+
+                        // 壁と壁に挟まれているのであれば、斜めはSpace
+                        // TODO 線を引いても大丈夫
+                        if i + 2 < board.0.len() as i32 {
+                            match board.0[(i + 2) as usize][j as usize].clone() {
+                                Cell::Wall(_) => {
+                                    if j + 1 < board.0[0].len() as i32 && board.0[(i + 1) as usize][(j + 1) as usize] == Cell::Unknown {
                                         new_board.0[(i + 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                        update_cell.push((i + 1, j + 1));
                                     }
                                     if j - 1 >= 0 && board.0[(i + 1) as usize][(j - 1) as usize] == Cell::Unknown {
                                         new_board.0[(i + 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                        update_cell.push((i + 1, j - 1));
                                     }
                                 }
+                                _ => {}
+                            }
+                        }
+                        if i + 2 == board.0.len() as i32 {
+                            if j + 1 < board.0[0].len() as i32 && board.0[(i + 1) as usize][(j + 1) as usize] == Cell::Unknown {
+                                new_board.0[(i + 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                update_cell.push((i + 1, j + 1));
+                            }
+                            if j - 1 >= 0 && board.0[(i + 1) as usize][(j - 1) as usize] == Cell::Unknown {
+                                new_board.0[(i + 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                update_cell.push((i + 1, j - 1));
+                            }
+                        }
 
-                                if i - 2 >= 0 {
-                                    match board.0[(i - 2) as usize][j as usize].clone() {
-                                        Cell::Wall(_) => {
-                                            if j + 1 < row.len() as i32 && board.0[(i - 1) as usize][(j + 1) as usize] == Cell::Unknown {
-                                                new_board.0[(i - 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
-                                            }
-                                            if j - 1 >= 0 && board.0[(i - 1) as usize][(j - 1) as usize] == Cell::Unknown {
-                                                new_board.0[(i - 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
-                                            }
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                if i - 2 == 0 {
-                                    if j + 1 < row.len() as i32 && board.0[(i - 1) as usize][(j + 1) as usize] == Cell::Unknown {
+                        if i - 2 >= 0 {
+                            match board.0[(i - 2) as usize][j as usize].clone() {
+                                Cell::Wall(_) => {
+                                    if j + 1 < board.0[0].len() as i32 && board.0[(i - 1) as usize][(j + 1) as usize] == Cell::Unknown {
                                         new_board.0[(i - 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                        update_cell.push((i - 1, j + 1));
                                     }
                                     if j - 1 >= 0 && board.0[(i - 1) as usize][(j - 1) as usize] == Cell::Unknown {
                                         new_board.0[(i - 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                        update_cell.push((i - 1, j - 1));
                                     }
                                 }
+                                _ => {}
+                            }
+                        }
+                        if i - 2 == 0 {
+                            if j + 1 < board.0[0].len() as i32 && board.0[(i - 1) as usize][(j + 1) as usize] == Cell::Unknown {
+                                new_board.0[(i - 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                update_cell.push((i - 1, j + 1));
+                            }
+                            if j - 1 >= 0 && board.0[(i - 1) as usize][(j - 1) as usize] == Cell::Unknown {
+                                new_board.0[(i - 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                update_cell.push((i - 1, j - 1));
+                            }
+                        }
 
-                                if j + 2 < row.len() as i32 {
-                                    match board.0[i as usize][(j + 2) as usize].clone() {
-                                        Cell::Wall(_) => {
-                                            if i + 1 < board.0.len() as i32 && board.0[(i + 1) as usize][(j + 1) as usize] == Cell::Unknown {
-                                                new_board.0[(i + 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
-                                            }
-                                            if i - 1 >= 0 && board.0[(i - 1) as usize][(j + 1) as usize] == Cell::Unknown {
-                                                new_board.0[(i - 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
-                                            }
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                if j + 2 == row.len() as i32 {
+                        if j + 2 < board.0[0].len() as i32 {
+                            match board.0[i as usize][(j + 2) as usize].clone() {
+                                Cell::Wall(_) => {
                                     if i + 1 < board.0.len() as i32 && board.0[(i + 1) as usize][(j + 1) as usize] == Cell::Unknown {
                                         new_board.0[(i + 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                        update_cell.push((i + 1, j + 1));
                                     }
                                     if i - 1 >= 0 && board.0[(i - 1) as usize][(j + 1) as usize] == Cell::Unknown {
                                         new_board.0[(i - 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                        update_cell.push((i - 1, j + 1));
                                     }
                                 }
+                                _ => {}
+                            }
+                        }
+                        if j + 2 == board.0[0].len() as i32 {
+                            if i + 1 < board.0.len() as i32 && board.0[(i + 1) as usize][(j + 1) as usize] == Cell::Unknown {
+                                new_board.0[(i + 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                update_cell.push((i + 1, j + 1));
+                            }
+                            if i - 1 >= 0 && board.0[(i - 1) as usize][(j + 1) as usize] == Cell::Unknown {
+                                new_board.0[(i - 1) as usize][(j + 1) as usize] = Cell::Space(None, None);
+                                update_cell.push((i - 1, j + 1));
+                            }
+                        }
 
-                                if j - 2 >= 0 {
-                                    match board.0[i as usize][(j - 2) as usize].clone() {
-                                        Cell::Wall(_) => {
-                                            if i + 1 < board.0.len() as i32 && board.0[(i + 1) as usize][(j - 1) as usize] == Cell::Unknown {
-                                                new_board.0[(i + 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
-                                            }
-                                            if i - 1 >= 0 && board.0[(i - 1) as usize][(j - 1) as usize] == Cell::Unknown {
-                                                new_board.0[(i - 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
-                                            }
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                if j - 2 == 0 {
+                        if j - 2 >= 0 {
+                            match board.0[i as usize][(j - 2) as usize].clone() {
+                                Cell::Wall(_) => {
                                     if i + 1 < board.0.len() as i32 && board.0[(i + 1) as usize][(j - 1) as usize] == Cell::Unknown {
                                         new_board.0[(i + 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                        update_cell.push((i + 1, j - 1));
                                     }
                                     if i - 1 >= 0 && board.0[(i - 1) as usize][(j - 1) as usize] == Cell::Unknown {
                                         new_board.0[(i - 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                        update_cell.push((i - 1, j - 1));
                                     }
                                 }
+                                _ => {}
                             }
-                            _ => {}
                         }
-                        new_board.0[i as usize][j as usize] = c;
-                        let (result, board) = solve(&new_board);
-                        if let CheckResultEnum::Complete = result {
-                            return (result, board);
+                        if j - 2 == 0 {
+                            if i + 1 < board.0.len() as i32 && board.0[(i + 1) as usize][(j - 1) as usize] == Cell::Unknown {
+                                new_board.0[(i + 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                update_cell.push((i + 1, j - 1));
+                            }
+                            if i - 1 >= 0 && board.0[(i - 1) as usize][(j - 1) as usize] == Cell::Unknown {
+                                new_board.0[(i - 1) as usize][(j - 1) as usize] = Cell::Space(None, None);
+                                update_cell.push((i - 1, j - 1));
+                            }
                         }
                     }
-                    return (CheckResultEnum::Invalid(CheckResultInvalidEnum::NoAnswer), None);
+                    _ => {}
                 }
-                CellEnum::Space(None, _) => {
-                    let candidate = vec![
-                        Cell::Space(Some(DirectionEnum::Up), None),
-                        Cell::Space(Some(DirectionEnum::Down), None),
-                        Cell::Space(Some(DirectionEnum::Left), None),
-                        Cell::Space(Some(DirectionEnum::Right), None),
-                    ];
-                    for c in candidate {
-                        let mut new_board = board.clone();
-                        match c.clone() {
-                            Cell::Space(Some(one), _) => {
-                                let vec = one.to_vector();
-                                let next = (i + vec.0, j + vec.1);
-                                if next.0 < 0 || next.0 >= board.0.len() as i32 || next.1 < 0 || next.1 >= row.len() as i32 {
-                                    continue;
-                                }
-                                match new_board.0[next.0 as usize][next.1 as usize].clone() {
-                                    Cell::Unknown | Cell::Space(None, _) => {
-                                        new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(one.reverse()), None);
-                                    }
-                                    Cell::Space(Some(another), None) => {
-                                        new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(another), Some(one.reverse()));
-                                    }
-                                    _ => continue
-                                }
-                            }
-                            _ => {}
-                        }
-                        new_board.0[i as usize][j as usize] = c;
-                        let (result, board) = solve(&new_board);
-                        if let CheckResultEnum::Complete = result {
-                            return (result, board);
-                        }
+                let mut next_candidate_pq = next_pq.clone();
+                new_board.0[i as usize][j as usize] = c;
+                for (i, j) in update_cell {
+                    let clen = candidates(&new_board, i as usize, j as usize).len();
+                    if clen > 0 {
+                        next_candidate_pq.push((i as usize, j as usize), clen as i32 * -1);
                     }
-                    return (CheckResultEnum::Invalid(CheckResultInvalidEnum::NoAnswer), None);
                 }
-                CellEnum::Space(Some(r), None) => {
-                    let candidate = vec![
-                        Cell::Space(Some(r.clone()), Some(DirectionEnum::Up)),
-                        Cell::Space(Some(r.clone()), Some(DirectionEnum::Down)),
-                        Cell::Space(Some(r.clone()), Some(DirectionEnum::Left)),
-                        Cell::Space(Some(r.clone()), Some(DirectionEnum::Right)),
-                    ];
-                    for c in candidate {
-                        let mut new_board = board.clone();
-                        match c.clone() {
-                            Cell::Space(Some(another), Some(one)) => {
-                                if another == one {
-                                    continue; // 同じ方向はダメ
-                                }
-                                let vec = one.to_vector();
-                                let next = (i + vec.0, j + vec.1);
-                                if next.0 < 0 || next.0 >= board.0.len() as i32 || next.1 < 0 || next.1 >= row.len() as i32 {
-                                    continue;
-                                }
-                                match new_board.0[next.0 as usize][next.1 as usize].clone() {
-                                    Cell::Unknown | Cell::Space(None, _) => {
-                                        new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(one.reverse()), None);
-                                    }
-                                    Cell::Space(Some(another), None) => {
-                                        new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(another), Some(one.reverse()));
-                                    }
-                                    _ => continue
-                                }
-                            }
-                            _ => {}
-                        }
-                        new_board.0[i as usize][j as usize] = c;
-                        let (result, board) = solve(&new_board);
-                        if let CheckResultEnum::Complete = result {
-                            return (result, board);
-                        }
-                    }
-                    return (CheckResultEnum::Invalid(CheckResultInvalidEnum::NoAnswer), None);
+                let (result, board) = solve(&new_board, &next_candidate_pq);
+                if let CheckResultEnum::Complete = result {
+                    return (result, board);
                 }
-                _ => continue
             }
+            (CheckResultEnum::Invalid(CheckResultInvalidEnum::NoAnswer), None)
         }
+        CellEnum::Space(None, _) => {
+            let candidate = vec![
+                Cell::Space(Some(DirectionEnum::Up), None),
+                Cell::Space(Some(DirectionEnum::Down), None),
+                Cell::Space(Some(DirectionEnum::Left), None),
+                Cell::Space(Some(DirectionEnum::Right), None),
+            ];
+            for c in candidate {
+                let mut new_board = board.clone();
+                let mut update_cell = Vec::new();
+                update_cell.push((i as usize, j as usize));
+                match c.clone() {
+                    Cell::Space(Some(one), _) => {
+                        let vec = one.to_vector();
+                        let next = (i as i32 + vec.0 as i32, j as i32 + vec.1);
+                        if next.0 < 0 || next.0 >= board.0.len() as i32 || next.1 < 0 || next.1 >= board.0[0].len() as i32 {
+                            continue;
+                        }
+                        match new_board.0[next.0 as usize][next.1 as usize].clone() {
+                            Cell::Unknown | Cell::Space(None, _) => {
+                                new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(one.reverse()), None);
+                                update_cell.push((next.0 as usize, next.1 as usize));
+                            }
+                            Cell::Space(Some(another), None) => {
+                                new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(another), Some(one.reverse()));
+                                update_cell.push((next.0 as usize, next.1 as usize));
+                            }
+                            _ => continue
+                        }
+                    }
+                    _ => {}
+                }
+                let mut next_candidate_pq = next_pq.clone();
+                new_board.0[i as usize][j as usize] = c;
+                for (i, j) in update_cell {
+                    let clen = candidates(&new_board, i as usize, j as usize).len();
+                    if clen > 0 {
+                        next_candidate_pq.push((i as usize, j as usize), clen as i32 * -1);
+                    }
+                }
+                let (result, board) = solve(&new_board, &next_candidate_pq);
+                if let CheckResultEnum::Complete = result {
+                    return (result, board);
+                }
+            }
+            (CheckResultEnum::Invalid(CheckResultInvalidEnum::NoAnswer), None)
+        }
+        CellEnum::Space(Some(r), None) => {
+            let candidate = vec![
+                Cell::Space(Some(r.clone()), Some(DirectionEnum::Up)),
+                Cell::Space(Some(r.clone()), Some(DirectionEnum::Down)),
+                Cell::Space(Some(r.clone()), Some(DirectionEnum::Left)),
+                Cell::Space(Some(r.clone()), Some(DirectionEnum::Right)),
+            ];
+            for c in candidate {
+                let mut new_board = board.clone();
+                let mut update_cell = Vec::new();
+                match c.clone() {
+                    Cell::Space(Some(another), Some(one)) => {
+                        if another == one {
+                            continue; // 同じ方向はダメ
+                        }
+                        let vec = one.to_vector();
+                        let next = (i as i32 + vec.0, j as i32 + vec.1);
+                        if next.0 < 0 || next.0 >= board.0.len() as i32 || next.1 < 0 || next.1 >= board.0[0].len() as i32 {
+                            continue;
+                        }
+                        match new_board.0[next.0 as usize][next.1 as usize].clone() {
+                            Cell::Unknown | Cell::Space(None, _) => {
+                                new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(one.reverse()), None);
+                                update_cell.push((next.0 as usize, next.1 as usize));
+                            }
+                            Cell::Space(Some(another), None) => {
+                                new_board.0[next.0 as usize][next.1 as usize] = Cell::Space(Some(another), Some(one.reverse()));
+                                update_cell.push((next.0 as usize, next.1 as usize));
+                            }
+                            _ => continue
+                        }
+                    }
+                    _ => {}
+                }
+                let mut next_candidate_pq = next_pq.clone();
+                new_board.0[i as usize][j as usize] = c;
+                for (i, j) in update_cell {
+                    let clen = candidates(&new_board, i as usize, j as usize).len();
+                    if clen > 0 {
+                        next_candidate_pq.push((i as usize, j as usize), clen as i32 * -1);
+                    }
+                }
+                let (result, board) = solve(&new_board, &next_candidate_pq);
+                if let CheckResultEnum::Complete = result {
+                    return (result, board);
+                }
+            }
+            (CheckResultEnum::Invalid(CheckResultInvalidEnum::NoAnswer), None)
+        }
+        _ => solve(&board, &next_pq)
     }
-    return (CheckResultEnum::Invalid(CheckResultInvalidEnum::NoAnswer), None);
 }
 
 fn candidates(board: &Board, i: usize, j: usize) -> Vec<Cell> {
@@ -672,4 +734,18 @@ fn candidates(board: &Board, i: usize, j: usize) -> Vec<Cell> {
             ret
         }
     };
+}
+
+fn create_priority_queue(board: &Board) -> PriorityQueue<(usize, usize), i32> {
+    let mut pq = PriorityQueue::new();
+    for i in 0..board.0.len() {
+        for j in 0..board.0[0].len() {
+            let c = candidates(board, i, j);
+            if c.len() == 0 {
+                continue;
+            }
+            pq.push((i, j), c.len() as i32 * -1);
+        }
+    }
+    return pq;
 }
