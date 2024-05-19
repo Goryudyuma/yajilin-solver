@@ -131,26 +131,26 @@ fn create_board(problem: &str) -> Board {
 /*
 var ca = bstr.charAt(i), cell=bd.cell[c];
 
-			if(this.include(ca,"0","4")){
-				var ca1 = bstr.charAt(i+1);
-				cell.qdir = parseInt(ca,16);
-				cell.qnum = (ca1!=="." ? parseInt(ca1,16) : -2);
-				i++;
-			}
-			else if(this.include(ca,"5","9")){
-				cell.qdir = parseInt(ca,16)-5;
-				cell.qnum = parseInt(bstr.substr(i+1,2),16);
-				i+=2;
-			}
-			else if(ca==="-"){
-				cell.qdir = parseInt(bstr.substr(i+1,1),16);
-				cell.qnum = parseInt(bstr.substr(i+2,3),16);
-				i+=4;
-			}
-			else if(ca>='a' && ca<='z'){ c+=(parseInt(ca,36)-10);}
+if(this.include(ca,"0","4")){
+	var ca1 = bstr.charAt(i+1);
+	cell.qdir = parseInt(ca,16);
+	cell.qnum = (ca1!=="." ? parseInt(ca1,16) : -2);
+	i++;
+}
+else if(this.include(ca,"5","9")){
+	cell.qdir = parseInt(ca,16)-5;
+	cell.qnum = parseInt(bstr.substr(i+1,2),16);
+	i+=2;
+}
+else if(ca==="-"){
+	cell.qdir = parseInt(bstr.substr(i+1,1),16);
+	cell.qnum = parseInt(bstr.substr(i+2,3),16);
+	i+=4;
+}
+else if(ca>='a' && ca<='z'){ c+=(parseInt(ca,36)-10);}
 
-			c++;
-			if(!bd.cell[c]){ break;}
+c++;
+if(!bd.cell[c]){ break;}
  */
 fn create_board_sub(mut chars: std::str::Chars) -> Vec<CellEnum> {
     let now = chars.next();
