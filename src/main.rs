@@ -1,6 +1,5 @@
 use std::cmp::PartialEq;
-use std::{fmt, time};
-use std::thread::sleep;
+use std::{fmt};
 use union_find::UnionFind;
 
 #[derive(Clone)]
@@ -618,4 +617,59 @@ fn solve(board: &Board) -> (CheckResultEnum, Option<Board>) {
         }
     }
     return (CheckResultEnum::Invalid(CheckResultInvalidEnum::NoAnswer), None);
+}
+
+fn candidates(board: &Board, i: usize, j: usize) -> Vec<Cell> {
+    return match &board.0[i][j] {
+        Cell::Wall(_) => vec![],
+        Cell::Space(Some(_), Some(_)) => vec![],
+        Cell::Space(Some(one), None) => {
+            vec![DirectionEnum::Up, DirectionEnum::Down, DirectionEnum::Left, DirectionEnum::Right]
+                .iter()
+                .filter(|dir| {
+                    dir != &one
+                })
+                .filter(|dir| {
+                    let vec = dir.to_vector();
+                    let next = (i as i32 + vec.0, j as i32 + vec.1);
+                    next.0 >= 0 && next.0 < board.0.len() as i32 && next.1 >= 0 && next.1 < board.0[0].len() as i32 &&
+                        (match &board.0[next.0 as usize][next.1 as usize] {
+                            Cell::Unknown => true,
+                            Cell::Space(_, None) => true,
+                            _ => false
+                        })
+                })
+                .map(|dir| Cell::Space(Some(one.clone()), Some(dir.clone())))
+                .collect()
+        }
+        Cell::Space(None, _) => {
+            let dirs: Vec<DirectionEnum> = vec![DirectionEnum::Up, DirectionEnum::Down, DirectionEnum::Left, DirectionEnum::Right]
+                .into_iter()
+                .filter(|dir| {
+                    let vec = dir.to_vector();
+                    let next = (i as i32 + vec.0, j as i32 + vec.1);
+                    next.0 >= 0 && next.0 < board.0.len() as i32 && next.1 >= 0 && next.1 < board.0[0].len() as i32 &&
+                        (match &board.0[next.0 as usize][next.1 as usize] {
+                            Cell::Unknown => true,
+                            Cell::Space(_, None) => true,
+                            _ => false
+                        })
+                }).collect();
+            dirs
+                .iter()
+                .flat_map(|item1| {
+                    dirs.iter()
+                        .filter(move |&item2| *item1 != *item2)
+                        .map(move |item2| Cell::Space(Some(item1.clone()), Some(item2.clone())))
+                })
+                .collect()
+        }
+        Cell::Unknown => {
+            let mut next_board = board.clone();
+            next_board.0[i][j] = Cell::Space(None, None);
+            let mut ret = candidates(&next_board, i, j);
+            ret.push(Cell::Wall(WallEnum::Wall));
+            ret
+        }
+    };
 }
